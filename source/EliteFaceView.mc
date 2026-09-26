@@ -3,45 +3,61 @@ import Toybox.ActivityMonitor;
 import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
-import Toybox.Math;
 import Toybox.System;
 import Toybox.Time;
 import Toybox.Time.Gregorian;
 import Toybox.WatchUi;
 
+// EliteFace Performance v0.6 — Design Foundation
 class EliteFaceView extends WatchUi.WatchFace {
+
+    // -------------------------------------------------------------------------
+    // Color system
+    // -------------------------------------------------------------------------
+    private const COLOR_BACKGROUND = Graphics.COLOR_BLACK;
+    private const COLOR_PRIMARY_TEXT = Graphics.COLOR_WHITE;
+    private const COLOR_SECONDARY_TEXT = Graphics.COLOR_LT_GRAY;
+    private const COLOR_TRACK = Graphics.COLOR_DK_GRAY;
+    private const COLOR_ACCENT = Graphics.COLOR_RED;
 
     // -------------------------------------------------------------------------
     // Layout bands — 454x454 FR965 circular safe content
     // -------------------------------------------------------------------------
-    private const BAND_STATUS_Y = 32;
-    private const BAND_DATE_Y = 58;
-    private const BAND_TIME_Y = 92;
+    private const BAND_DATE_Y = 40;
+    private const ACCENT_Y = 64;
+    private const ACCENT_HALF = 12;
+    private const BAND_TIME_Y = 88;
 
-    // Separator between time and metrics (safe of circular edges)
-    private const SEP_Y = 208;
-    private const SEP_INSET = 78;
+    // Primary metrics: value/label above short bottom-cup arcs
+    private const METRIC_VALUE_Y = 228;
+    private const METRIC_LEFT_CX = 105;
+    private const METRIC_CENTER_CX = 227;
+    private const METRIC_RIGHT_CX = 349;
+    private const METRIC_COL_WIDTH = 100;
+    private const METRIC_ARC_RADIUS = 34;
+    private const METRIC_ARC_GAP = 6;
 
-    // Compact instrument gauges (below separator, clear of time)
-    private const BAND_GAUGE_TOP = 222;
-    private const BAND_GAUGE_BOTTOM = 338;
-    private const GAUGE_LEFT_CX = 135;
-    private const GAUGE_RIGHT_CX = 319;
+    // Short cup arc under the metric (not a full / surrounding ring)
+    private const ARC_START = 210;
+    private const ARC_SWEEP = 120;
+    private const ARC_PEN_TRACK = 2;
+    private const ARC_PEN_PROGRESS = 3;
 
-    private const BAND_BOTTOM_Y = 362;
-    private const BOTTOM_DIVIDER_HALF = 18;
-
-    // Bottom-cup instrument arc: 210° → 330° counter-clockwise (120° sweep)
-    // Does NOT form a complete circle.
-    private const GAUGE_ARC_START = 210;
-    private const GAUGE_ARC_SWEEP = 120;
-    private const GAUGE_PEN_TRACK = 2;
-    private const GAUGE_PEN_PROGRESS = 4;
-    private const GAUGE_TICK_LEN = 5;
+    // Secondary metrics — keep above ~y=385
+    private const BAND_BOTTOM_Y = 358;
+    private const BOTTOM_LEFT_CX = 135;
+    private const BOTTOM_RIGHT_CX = 319;
+    private const INLINE_GAP = 5;
 
     // HR arc scale (bpm) — numeric value remains authoritative
     private const HR_GAUGE_MIN = 40;
     private const HR_GAUGE_MAX = 190;
+
+    // Shared metric font ranks (0 = largest allowed, 3 = smallest)
+    private const FONT_RANK_MILD = 0;
+    private const FONT_RANK_MEDIUM = 1;
+    private const FONT_RANK_SMALL = 2;
+    private const FONT_RANK_TINY = 3;
 
     function initialize() {
         WatchFace.initialize();
@@ -57,30 +73,23 @@ class EliteFaceView extends WatchUi.WatchFace {
         var width = dc.getWidth();
         var centerX = width / 2;
 
-        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
+        dc.setColor(COLOR_BACKGROUND, COLOR_BACKGROUND);
         dc.clear();
 
         var monitorInfo = ActivityMonitor.getInfo();
 
-        // --- TOP STATUS (subdued) ---
-        drawCenteredText(
-            dc,
-            centerX,
-            BAND_STATUS_Y,
-            Graphics.FONT_XTINY,
-            formatBattery(),
-            Graphics.COLOR_DK_GRAY
-        );
-
-        // --- DATE (more weight than battery, far less than time) ---
+        // --- DATE ---
         drawCenteredText(
             dc,
             centerX,
             BAND_DATE_Y,
-            Graphics.FONT_SMALL,
+            Graphics.FONT_TINY,
             formatDate(),
-            Graphics.COLOR_WHITE
+            COLOR_PRIMARY_TEXT
         );
+
+        // --- Signature accent (single restrained mark below date) ---
+        drawDateAccent(dc, centerX, ACCENT_Y);
 
         // --- PRIMARY TIME ---
         drawCenteredText(
@@ -89,57 +98,60 @@ class EliteFaceView extends WatchUi.WatchFace {
             BAND_TIME_Y,
             Graphics.FONT_NUMBER_HOT,
             formatTime(),
-            Graphics.COLOR_WHITE
+            COLOR_PRIMARY_TEXT
         );
 
-        // --- TIME / METRICS separator ---
-        drawSeparator(dc, centerX, SEP_Y, width);
-
-        // --- INSTRUMENT GAUGES ---
-        var gaugeRadius = 44;
-        // Arc sits in the lower portion of the gauge cell; text above it
-        var textTop = BAND_GAUGE_TOP + 2;
-        var arcCy = BAND_GAUGE_BOTTOM - gaugeRadius - 4;
-
+        // --- PRIMARY METRICS: HR | STEPS | BAT ---
         var hrValue = readHeartRate();
         var hrText = (hrValue == null) ? "--" : (hrValue as Number).format("%d");
-        drawInstrumentGauge(
+        var stepsText = formatSteps(monitorInfo);
+        var batPct = readBatteryPercent();
+        var batText = batPct.format("%d") + "%";
+
+        var maxWidth = METRIC_COL_WIDTH;
+        var sharedFont = selectSharedMetricFont(dc, hrText, stepsText, batText, maxWidth);
+
+        drawPrimaryMetric(
             dc,
-            GAUGE_LEFT_CX,
-            textTop,
-            arcCy,
-            gaugeRadius,
+            METRIC_LEFT_CX,
+            METRIC_VALUE_Y,
             hrText,
             "HR",
-            heartRateProgress(hrValue)
+            heartRateProgress(hrValue),
+            sharedFont
         );
-
-        drawInstrumentGauge(
+        drawPrimaryMetric(
             dc,
-            GAUGE_RIGHT_CX,
-            textTop,
-            arcCy,
-            gaugeRadius,
-            formatSteps(monitorInfo),
+            METRIC_CENTER_CX,
+            METRIC_VALUE_Y,
+            stepsText,
             "STEPS",
-            stepsProgressRatio(monitorInfo)
+            stepsProgressRatio(monitorInfo),
+            sharedFont
+        );
+        drawPrimaryMetric(
+            dc,
+            METRIC_RIGHT_CX,
+            METRIC_VALUE_Y,
+            batText,
+            "BAT",
+            batteryProgress(batPct),
+            sharedFont
         );
 
-        // --- BOTTOM METRICS with center marker ---
-        drawBottomCenterMarker(dc, centerX, BAND_BOTTOM_Y);
-
+        // --- SECONDARY: inline distance / calories ---
         var distValue = "--";
         if ((monitorInfo != null) && (monitorInfo.distance != null)) {
             var km = (monitorInfo.distance as Number).toFloat() / 100000.0;
             distValue = km.format("%.1f");
         }
-        drawBottomMetric(dc, GAUGE_LEFT_CX, BAND_BOTTOM_Y, distValue, "KM");
+        drawInlineMetric(dc, BOTTOM_LEFT_CX, BAND_BOTTOM_Y, distValue, "KM");
 
         var calValue = "--";
         if ((monitorInfo != null) && (monitorInfo.calories != null)) {
             calValue = (monitorInfo.calories as Number).format("%d");
         }
-        drawBottomMetric(dc, GAUGE_RIGHT_CX, BAND_BOTTOM_Y, calValue, "CAL");
+        drawInlineMetric(dc, BOTTOM_RIGHT_CX, BAND_BOTTOM_Y, calValue, "CAL");
     }
 
     function onHide() as Void {
@@ -167,56 +179,31 @@ class EliteFaceView extends WatchUi.WatchFace {
         dc.drawText(x, y, font, text, Graphics.TEXT_JUSTIFY_CENTER);
     }
 
-    // Thin instrumentation separator with red center accent.
-    // Inset keeps the line inside the circular safe region.
-    private function drawSeparator(
-        dc as Dc,
-        centerX as Number,
-        y as Number,
-        width as Number
-    ) as Void {
-        var left = SEP_INSET;
-        var right = width - SEP_INSET;
-
-        dc.setPenWidth(1);
-        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
-        dc.drawLine(left, y, right, y);
-
-        // Short red accent at center
-        var accentHalf = 10;
+    private function drawDateAccent(dc as Dc, centerX as Number, y as Number) as Void {
         dc.setPenWidth(2);
-        dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
-        dc.drawLine(centerX - accentHalf, y, centerX + accentHalf, y);
-
-        // Small end ticks
+        dc.setColor(COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
+        dc.drawLine(centerX - ACCENT_HALF, y, centerX + ACCENT_HALF, y);
         dc.setPenWidth(1);
-        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
-        dc.drawLine(left, y - 3, left, y + 3);
-        dc.drawLine(right, y - 3, right, y + 3);
     }
 
-    // Compact instrument dial: value + label grouped above a bottom-cup arc.
-    private function drawInstrumentGauge(
+    // VALUE / LABEL above a short progress arc (identical grammar per column).
+    private function drawPrimaryMetric(
         dc as Dc,
         cx as Number,
-        textTop as Number,
-        arcCy as Number,
-        radius as Number,
+        valueY as Number,
         valueText as String,
         label as String,
-        progress as Float
+        progress as Float,
+        valueFont as FontDefinition
     ) as Void {
-        var maxValueWidth = (radius * 2) + 20;
-        var valueFont = selectGaugeValueFont(dc, valueText, maxValueWidth);
         var labelFont = Graphics.FONT_XTINY;
         var valueHeight = dc.getFontHeight(valueFont);
         var labelHeight = dc.getFontHeight(labelFont);
 
-        var valueY = textTop;
         var labelY = valueY + valueHeight - 2;
+        var arcCy = labelY + labelHeight + METRIC_ARC_GAP + METRIC_ARC_RADIUS;
 
-        // Value
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+        dc.setColor(COLOR_PRIMARY_TEXT, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
             cx,
             valueY,
@@ -225,8 +212,7 @@ class EliteFaceView extends WatchUi.WatchFace {
             Graphics.TEXT_JUSTIFY_CENTER
         );
 
-        // Label
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
+        dc.setColor(COLOR_SECONDARY_TEXT, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
             cx,
             labelY,
@@ -235,147 +221,144 @@ class EliteFaceView extends WatchUi.WatchFace {
             Graphics.TEXT_JUSTIFY_CENTER
         );
 
-        // Short grouping underline under the label
-        var underlineHalf = 14;
-        var underlineY = labelY + labelHeight + 1;
-        dc.setPenWidth(1);
-        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
-        dc.drawLine(cx - underlineHalf, underlineY, cx + underlineHalf, underlineY);
+        drawProgressArc(dc, cx, arcCy, METRIC_ARC_RADIUS, progress);
+    }
 
-        // Track arc (bottom cup — not a full circle)
-        var arcEnd = GAUGE_ARC_START + GAUGE_ARC_SWEEP;
-        dc.setPenWidth(GAUGE_PEN_TRACK);
-        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+    // Bottom-cup arc under the metric — never a full circle.
+    private function drawProgressArc(
+        dc as Dc,
+        cx as Number,
+        cy as Number,
+        radius as Number,
+        progress as Float
+    ) as Void {
+        var arcEnd = ARC_START + ARC_SWEEP;
+
+        dc.setPenWidth(ARC_PEN_TRACK);
+        dc.setColor(COLOR_TRACK, Graphics.COLOR_TRANSPARENT);
         dc.drawArc(
             cx,
-            arcCy,
+            cy,
             radius,
             Graphics.ARC_COUNTER_CLOCKWISE,
-            GAUGE_ARC_START,
+            ARC_START,
             arcEnd
         );
 
-        // Progress arc
         if (progress > 0.0) {
             var clamped = progress;
             if (clamped > 1.0) {
                 clamped = 1.0;
             }
-            var sweep = (GAUGE_ARC_SWEEP * clamped).toNumber();
+            var sweep = (ARC_SWEEP * clamped).toNumber();
             if (sweep > 0) {
-                dc.setPenWidth(GAUGE_PEN_PROGRESS);
-                dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
+                dc.setPenWidth(ARC_PEN_PROGRESS);
+                dc.setColor(COLOR_ACCENT, Graphics.COLOR_TRANSPARENT);
                 dc.drawArc(
                     cx,
-                    arcCy,
+                    cy,
                     radius,
                     Graphics.ARC_COUNTER_CLOCKWISE,
-                    GAUGE_ARC_START,
-                    GAUGE_ARC_START + sweep
+                    ARC_START,
+                    ARC_START + sweep
                 );
             }
         }
         dc.setPenWidth(1);
-
-        // End / mid tick marks on the track
-        drawGaugeTick(dc, cx, arcCy, radius, GAUGE_ARC_START);
-        drawGaugeTick(dc, cx, arcCy, radius, GAUGE_ARC_START + (GAUGE_ARC_SWEEP / 2));
-        drawGaugeTick(dc, cx, arcCy, radius, arcEnd);
     }
 
-    private function drawGaugeTick(
+    // "0.0 KM" as independently styled value + unit, group-centered via measurement.
+    private function drawInlineMetric(
         dc as Dc,
-        cx as Number,
-        cy as Number,
-        radius as Number,
-        angleDeg as Number
-    ) as Void {
-        var rad = angleDeg.toFloat() * Math.PI / 180.0;
-        var cosA = Math.cos(rad);
-        var sinA = Math.sin(rad);
-        var outer = radius.toFloat() + 1.0;
-        var inner = outer - GAUGE_TICK_LEN.toFloat();
-
-        // Garmin angles: 0° = 3 o'clock, CCW; screen Y grows downward
-        var x0 = cx + (inner * cosA).toNumber();
-        var y0 = cy - (inner * sinA).toNumber();
-        var x1 = cx + (outer * cosA).toNumber();
-        var y1 = cy - (outer * sinA).toNumber();
-
-        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
-        dc.drawLine(x0, y0, x1, y1);
-    }
-
-    private function selectGaugeValueFont(
-        dc as Dc,
-        text as String,
-        maxWidth as Number
-    ) as FontDefinition {
-        if (dc.getTextWidthInPixels(text, Graphics.FONT_NUMBER_MILD) <= maxWidth) {
-            return Graphics.FONT_NUMBER_MILD;
-        }
-        if (dc.getTextWidthInPixels(text, Graphics.FONT_MEDIUM) <= maxWidth) {
-            return Graphics.FONT_MEDIUM;
-        }
-        if (dc.getTextWidthInPixels(text, Graphics.FONT_SMALL) <= maxWidth) {
-            return Graphics.FONT_SMALL;
-        }
-        return Graphics.FONT_TINY;
-    }
-
-    private function drawBottomCenterMarker(
-        dc as Dc,
-        centerX as Number,
-        y as Number
-    ) as Void {
-        var midY = y + 12;
-
-        // Subtle vertical divider between KM / CAL cells
-        dc.setPenWidth(1);
-        dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
-        dc.drawLine(
-            centerX,
-            midY - BOTTOM_DIVIDER_HALF,
-            centerX,
-            midY + BOTTOM_DIVIDER_HALF
-        );
-
-        // Small red center accent
-        dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
-        dc.fillCircle(centerX, midY, 2);
-    }
-
-    private function drawBottomMetric(
-        dc as Dc,
-        x as Number,
+        groupCx as Number,
         y as Number,
         valueText as String,
         unitText as String
     ) as Void {
         var valueFont = Graphics.FONT_TINY;
         var unitFont = Graphics.FONT_XTINY;
-        var valueHeight = dc.getFontHeight(valueFont);
+        var valueWidth = dc.getTextWidthInPixels(valueText, valueFont);
+        var unitWidth = dc.getTextWidthInPixels(unitText, unitFont);
+        var totalWidth = valueWidth + INLINE_GAP + unitWidth;
+        var left = groupCx - (totalWidth / 2);
 
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+        var valueHeight = dc.getFontHeight(valueFont);
+        var unitHeight = dc.getFontHeight(unitFont);
+        var unitY = y + ((valueHeight - unitHeight) / 2);
+
+        dc.setColor(COLOR_PRIMARY_TEXT, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            x,
+            left,
             y,
             valueFont,
             valueText,
-            Graphics.TEXT_JUSTIFY_CENTER
+            Graphics.TEXT_JUSTIFY_LEFT
         );
-        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
+
+        dc.setColor(COLOR_SECONDARY_TEXT, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            x,
-            y + valueHeight + 1,
+            left + valueWidth + INLINE_GAP,
+            unitY,
             unitFont,
             unitText,
-            Graphics.TEXT_JUSTIFY_CENTER
+            Graphics.TEXT_JUSTIFY_LEFT
         );
     }
 
+    // Shared max font across columns — most constrained value sets size for all.
+    private function selectSharedMetricFont(
+        dc as Dc,
+        textA as String,
+        textB as String,
+        textC as String,
+        maxWidth as Number
+    ) as FontDefinition {
+        var rankA = metricFontRank(dc, textA, maxWidth);
+        var rankB = metricFontRank(dc, textB, maxWidth);
+        var rankC = metricFontRank(dc, textC, maxWidth);
+
+        var sharedRank = rankA;
+        if (rankB > sharedRank) {
+            sharedRank = rankB;
+        }
+        if (rankC > sharedRank) {
+            sharedRank = rankC;
+        }
+        return fontFromRank(sharedRank);
+    }
+
+    private function metricFontRank(
+        dc as Dc,
+        text as String,
+        maxWidth as Number
+    ) as Number {
+        if (dc.getTextWidthInPixels(text, Graphics.FONT_NUMBER_MILD) <= maxWidth) {
+            return FONT_RANK_MILD;
+        }
+        if (dc.getTextWidthInPixels(text, Graphics.FONT_MEDIUM) <= maxWidth) {
+            return FONT_RANK_MEDIUM;
+        }
+        if (dc.getTextWidthInPixels(text, Graphics.FONT_SMALL) <= maxWidth) {
+            return FONT_RANK_SMALL;
+        }
+        return FONT_RANK_TINY;
+    }
+
+    private function fontFromRank(rank as Number) as FontDefinition {
+        if (rank == FONT_RANK_MILD) {
+            return Graphics.FONT_NUMBER_MILD;
+        }
+        if (rank == FONT_RANK_MEDIUM) {
+            return Graphics.FONT_MEDIUM;
+        }
+        if (rank == FONT_RANK_SMALL) {
+            return Graphics.FONT_SMALL;
+        }
+        return Graphics.FONT_TINY;
+    }
+
     // -------------------------------------------------------------------------
-    // Data formatting (unchanged sources)
+    // Data acquisition (unchanged)
     // -------------------------------------------------------------------------
 
     private function formatTime() as String {
@@ -406,9 +389,19 @@ class EliteFaceView extends WatchUi.WatchFace {
         return Lang.format("$1$ $2$ $3$", [dayOfWeek, info.day, month]);
     }
 
-    private function formatBattery() as String {
-        var pct = (System.getSystemStats().battery + 0.5).toNumber();
-        return pct.format("%d") + "% BAT";
+    private function readBatteryPercent() as Number {
+        return (System.getSystemStats().battery + 0.5).toNumber();
+    }
+
+    private function batteryProgress(pct as Number) as Float {
+        var ratio = pct.toFloat() / 100.0;
+        if (ratio < 0.0) {
+            return 0.0;
+        }
+        if (ratio > 1.0) {
+            return 1.0;
+        }
+        return ratio;
     }
 
     private function readHeartRate() as Number? {
