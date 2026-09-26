@@ -14,4 +14,42 @@
         </settingConfig>
     </setting>
 
+    <setting propertyKey="@Properties.PrimaryLeftMetric" title="@Strings.PrimaryLeftMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.MetricHeartRate</listEntry>
+            <listEntry value="1">@Strings.MetricSteps</listEntry>
+            <listEntry value="2">@Strings.MetricBattery</listEntry>
+        </settingConfig>
+    </setting>
+
+    <setting propertyKey="@Properties.PrimaryCenterMetric" title="@Strings.PrimaryCenterMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.MetricHeartRate</listEntry>
+            <listEntry value="1">@Strings.MetricSteps</listEntry>
+            <listEntry value="2">@Strings.MetricBattery</listEntry>
+        </settingConfig>
+    </setting>
+
+    <setting propertyKey="@Properties.PrimaryRightMetric" title="@Strings.PrimaryRightMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.MetricHeartRate</listEntry>
+            <listEntry value="1">@Strings.MetricSteps</listEntry>
+            <listEntry value="2">@Strings.MetricBattery</listEntry>
+        </settingConfig>
+    </setting>
+
+    <setting propertyKey="@Properties.SecondaryLeftMetric" title="@Strings.SecondaryLeftMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="3">@Strings.MetricDistance</listEntry>
+            <listEntry value="4">@Strings.MetricCalories</listEntry>
+        </settingConfig>
+    </setting>
+
+    <setting propertyKey="@Properties.SecondaryRightMetric" title="@Strings.SecondaryRightMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="3">@Strings.MetricDistance</listEntry>
+            <listEntry value="4">@Strings.MetricCalories</listEntry>
+        </settingConfig>
+    </setting>
+
 </settings>

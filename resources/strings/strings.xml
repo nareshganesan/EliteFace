@@ -10,4 +10,16 @@
     <string id="TimeFormat12Hour">12 Hour</string>
     <string id="TimeFormat24Hour">24 Hour</string>
 
+    <string id="PrimaryLeftMetricTitle">Primary Left</string>
+    <string id="PrimaryCenterMetricTitle">Primary Center</string>
+    <string id="PrimaryRightMetricTitle">Primary Right</string>
+    <string id="SecondaryLeftMetricTitle">Secondary Left</string>
+    <string id="SecondaryRightMetricTitle">Secondary Right</string>
+
+    <string id="MetricHeartRate">Heart Rate</string>
+    <string id="MetricSteps">Steps</string>
+    <string id="MetricBattery">Battery</string>
+    <string id="MetricDistance">Distance</string>
+    <string id="MetricCalories">Calories</string>
+
 </strings>
