@@ -4,7 +4,7 @@ import Toybox.Lang;
 import Toybox.System;
 import Toybox.WatchUi;
 
-// EliteFace v0.8 — Configurable Metric Slots
+// EliteFace v0.9.2 — Typography and Icon System
 class EliteFaceView extends WatchUi.WatchFace {
 
     private const TIME_FORMAT_SYSTEM = 0;
@@ -12,37 +12,40 @@ class EliteFaceView extends WatchUi.WatchFace {
     private const TIME_FORMAT_24H = 2;
 
     // -------------------------------------------------------------------------
-    // Layout bands — unchanged from v0.7
+    // Layout — 454x454 FR965
     // -------------------------------------------------------------------------
     private const BAND_DATE_Y = 40;
     private const ACCENT_GAP = 3;
     private const ACCENT_HALF = 12;
     private const BAND_TIME_Y = 92;
 
-    private const METRIC_VALUE_Y = 226;
-    private const METRIC_LEFT_CX = 105;
-    private const METRIC_CENTER_CX = 227;
-    private const METRIC_RIGHT_CX = 349;
-    private const METRIC_COL_WIDTH = 100;
-    private const METRIC_ARC_RADIUS = 28;
-    private const METRIC_ARC_GAP = 2;
+    private const COMP_CY = 280;
+    private const COMP_LEFT_CX = 105;
+    private const COMP_CENTER_CX = 227;
+    private const COMP_RIGHT_CX = 349;
+    private const COMP_RADIUS = 47;
+    private const COMP_RING_PEN = 1;
+    private const COMP_VALUE_MAX_WIDTH = 64;
+    private const COMP_ICON_SIZE = 14;
+    // Explicit vertical zones inside the circle (relative to cy)
+    private const COMP_VALUE_OFFSET_Y = -16;
+    private const COMP_ICON_OFFSET_Y = 10;
 
-    private const ARC_START = 210;
-    private const ARC_SWEEP = 120;
-    private const ARC_PEN_TRACK = 2;
-    private const ARC_PEN_PROGRESS = 3;
-
-    private const BAND_BOTTOM_Y = 348;
+    private const BAND_BOTTOM_Y = 362;
     private const BOTTOM_LEFT_CX = 135;
     private const BOTTOM_RIGHT_CX = 319;
-    private const INLINE_GAP = 5;
+    private const INLINE_GAP_ICON_VALUE = 4;
+    private const INLINE_GAP_VALUE_UNIT = 3;
+    private const SECONDARY_ICON_SIZE = 12;
 
-    private const FONT_RANK_MILD = 0;
-    private const FONT_RANK_MEDIUM = 1;
-    private const FONT_RANK_SMALL = 2;
-    private const FONT_RANK_TINY = 3;
+    // Primary font ladder — max is FONT_MEDIUM (one tier below v0.9.1 NUMBER_MILD)
+    private const FONT_RANK_MEDIUM = 0;
+    private const FONT_RANK_SMALL = 1;
+    private const FONT_RANK_TINY = 2;
+    private const FONT_RANK_XTINY = 3;
 
     private var _dataProvider as WatchDataProvider;
+    private var _icons as MetricIconCache;
     private var _primaryLeft as MetricRender;
     private var _primaryCenter as MetricRender;
     private var _primaryRight as MetricRender;
@@ -52,6 +55,7 @@ class EliteFaceView extends WatchUi.WatchFace {
     function initialize() {
         WatchFace.initialize();
         _dataProvider = new WatchDataProvider();
+        _icons = new MetricIconCache();
         _primaryLeft = new MetricRender();
         _primaryCenter = new MetricRender();
         _primaryRight = new MetricRender();
@@ -60,9 +64,13 @@ class EliteFaceView extends WatchUi.WatchFace {
     }
 
     function onLayout(dc as Dc) as Void {
+        _icons.load();
     }
 
     function onShow() as Void {
+        if (_icons.iconFor(MetricIds.HEART_RATE) == null) {
+            _icons.load();
+        }
     }
 
     function onUpdate(dc as Dc) as Void {
@@ -70,17 +78,15 @@ class EliteFaceView extends WatchUi.WatchFace {
         var theme = ThemeCatalog.resolve(readThemeId());
         var data = _dataProvider.getSnapshot();
 
-        // Resolve configured slots into reused render payloads
-        MetricCatalog.fillPrimary(readSlot("PrimaryLeftMetric"), data, _primaryLeft);
-        MetricCatalog.fillPrimary(readSlot("PrimaryCenterMetric"), data, _primaryCenter);
-        MetricCatalog.fillPrimary(readSlot("PrimaryRightMetric"), data, _primaryRight);
-        MetricCatalog.fillSecondary(readSlot("SecondaryLeftMetric"), data, _secondaryLeft);
-        MetricCatalog.fillSecondary(readSlot("SecondaryRightMetric"), data, _secondaryRight);
+        MetricCatalog.fillPrimary(readSlot("PrimaryLeftMetric"), data, _primaryLeft, _icons);
+        MetricCatalog.fillPrimary(readSlot("PrimaryCenterMetric"), data, _primaryCenter, _icons);
+        MetricCatalog.fillPrimary(readSlot("PrimaryRightMetric"), data, _primaryRight, _icons);
+        MetricCatalog.fillSecondary(readSlot("SecondaryLeftMetric"), data, _secondaryLeft, _icons);
+        MetricCatalog.fillSecondary(readSlot("SecondaryRightMetric"), data, _secondaryRight, _icons);
 
         dc.setColor(theme.background, theme.background);
         dc.clear();
 
-        // --- DATE ---
         var dateFont = Graphics.FONT_TINY;
         drawCenteredText(
             dc,
@@ -90,11 +96,9 @@ class EliteFaceView extends WatchUi.WatchFace {
             data.dateText,
             theme.primaryText
         );
-
         var accentY = BAND_DATE_Y + dc.getFontHeight(dateFont) + ACCENT_GAP;
         drawDateAccent(dc, centerX, accentY, theme);
 
-        // --- PRIMARY TIME ---
         drawCenteredText(
             dc,
             centerX,
@@ -104,63 +108,20 @@ class EliteFaceView extends WatchUi.WatchFace {
             theme.primaryText
         );
 
-        // --- PRIMARY SLOTS ---
         var sharedFont = selectSharedMetricFont(
             dc,
             _primaryLeft.value,
             _primaryCenter.value,
             _primaryRight.value,
-            METRIC_COL_WIDTH
+            COMP_VALUE_MAX_WIDTH
         );
 
-        drawPrimaryMetric(
-            dc,
-            theme,
-            METRIC_LEFT_CX,
-            METRIC_VALUE_Y,
-            _primaryLeft.value,
-            _primaryLeft.label,
-            _primaryLeft.progress,
-            sharedFont
-        );
-        drawPrimaryMetric(
-            dc,
-            theme,
-            METRIC_CENTER_CX,
-            METRIC_VALUE_Y,
-            _primaryCenter.value,
-            _primaryCenter.label,
-            _primaryCenter.progress,
-            sharedFont
-        );
-        drawPrimaryMetric(
-            dc,
-            theme,
-            METRIC_RIGHT_CX,
-            METRIC_VALUE_Y,
-            _primaryRight.value,
-            _primaryRight.label,
-            _primaryRight.progress,
-            sharedFont
-        );
+        drawPrimaryComplication(dc, theme, COMP_LEFT_CX, COMP_CY, _primaryLeft, sharedFont);
+        drawPrimaryComplication(dc, theme, COMP_CENTER_CX, COMP_CY, _primaryCenter, sharedFont);
+        drawPrimaryComplication(dc, theme, COMP_RIGHT_CX, COMP_CY, _primaryRight, sharedFont);
 
-        // --- SECONDARY SLOTS ---
-        drawInlineMetric(
-            dc,
-            theme,
-            BOTTOM_LEFT_CX,
-            BAND_BOTTOM_Y,
-            _secondaryLeft.value,
-            _secondaryLeft.label
-        );
-        drawInlineMetric(
-            dc,
-            theme,
-            BOTTOM_RIGHT_CX,
-            BAND_BOTTOM_Y,
-            _secondaryRight.value,
-            _secondaryRight.label
-        );
+        drawSecondaryMetric(dc, theme, BOTTOM_LEFT_CX, BAND_BOTTOM_Y, _secondaryLeft);
+        drawSecondaryMetric(dc, theme, BOTTOM_RIGHT_CX, BAND_BOTTOM_Y, _secondaryRight);
     }
 
     function onHide() as Void {
@@ -171,10 +132,6 @@ class EliteFaceView extends WatchUi.WatchFace {
 
     function onEnterSleep() as Void {
     }
-
-    // -------------------------------------------------------------------------
-    // Settings
-    // -------------------------------------------------------------------------
 
     private function readThemeId() as Number {
         return Application.Properties.getValue("Theme") as Number;
@@ -187,10 +144,6 @@ class EliteFaceView extends WatchUi.WatchFace {
     private function readSlot(propertyId as String) as Number {
         return Application.Properties.getValue(propertyId) as Number;
     }
-
-    // -------------------------------------------------------------------------
-    // Drawing helpers
-    // -------------------------------------------------------------------------
 
     private function drawCenteredText(
         dc as Dc,
@@ -216,45 +169,40 @@ class EliteFaceView extends WatchUi.WatchFace {
         dc.setPenWidth(1);
     }
 
-    private function drawPrimaryMetric(
+    // Explicit zones: value in upper half, icon in lower half
+    private function drawPrimaryComplication(
         dc as Dc,
         theme as Theme,
         cx as Number,
-        valueY as Number,
-        valueText as String,
-        label as String,
-        progress as Float,
+        cy as Number,
+        metric as MetricRender,
         valueFont as FontDefinition
     ) as Void {
-        var labelFont = Graphics.FONT_XTINY;
-        var valueHeight = dc.getFontHeight(valueFont);
-        var labelHeight = dc.getFontHeight(labelFont);
+        drawProgressRing(dc, theme, cx, cy, COMP_RADIUS, metric.progress);
 
-        var labelY = valueY + valueHeight - 2;
-        var arcCy = labelY + labelHeight + METRIC_ARC_GAP;
+        var valueHeight = dc.getFontHeight(valueFont);
+        var valueY = cy + COMP_VALUE_OFFSET_Y - (valueHeight / 2);
+        var iconY = cy + COMP_ICON_OFFSET_Y;
 
         dc.setColor(theme.primaryText, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
             cx,
             valueY,
             valueFont,
-            valueText,
+            metric.value,
             Graphics.TEXT_JUSTIFY_CENTER
         );
 
-        dc.setColor(theme.secondaryText, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            cx,
-            labelY,
-            labelFont,
-            label,
-            Graphics.TEXT_JUSTIFY_CENTER
+        drawMetricIcon(
+            dc,
+            metric,
+            cx - (COMP_ICON_SIZE / 2),
+            iconY,
+            COMP_ICON_SIZE
         );
-
-        drawProgressArc(dc, theme, cx, arcCy, METRIC_ARC_RADIUS, progress);
     }
 
-    private function drawProgressArc(
+    private function drawProgressRing(
         dc as Dc,
         theme as Theme,
         cx as Number,
@@ -262,77 +210,108 @@ class EliteFaceView extends WatchUi.WatchFace {
         radius as Number,
         progress as Float
     ) as Void {
-        var arcEnd = ARC_START + ARC_SWEEP;
-
-        dc.setPenWidth(ARC_PEN_TRACK);
+        dc.setPenWidth(COMP_RING_PEN);
         dc.setColor(theme.track, Graphics.COLOR_TRANSPARENT);
-        dc.drawArc(
-            cx,
-            cy,
-            radius,
-            Graphics.ARC_COUNTER_CLOCKWISE,
-            ARC_START,
-            arcEnd
-        );
+        dc.drawArc(cx, cy, radius, Graphics.ARC_CLOCKWISE, 0, 0);
 
         if (progress > 0.0) {
             var clamped = progress;
             if (clamped > 1.0) {
                 clamped = 1.0;
             }
-            var sweep = (ARC_SWEEP * clamped).toNumber();
-            if (sweep > 0) {
-                dc.setPenWidth(ARC_PEN_PROGRESS);
-                dc.setColor(theme.accent, Graphics.COLOR_TRANSPARENT);
-                dc.drawArc(
-                    cx,
-                    cy,
-                    radius,
-                    Graphics.ARC_COUNTER_CLOCKWISE,
-                    ARC_START,
-                    ARC_START + sweep
-                );
+            dc.setColor(theme.accent, Graphics.COLOR_TRANSPARENT);
+            if (clamped >= 0.999) {
+                dc.drawArc(cx, cy, radius, Graphics.ARC_CLOCKWISE, 90, 90);
+            } else {
+                var sweep = (360.0 * clamped).toNumber();
+                if (sweep > 0) {
+                    dc.drawArc(
+                        cx,
+                        cy,
+                        radius,
+                        Graphics.ARC_CLOCKWISE,
+                        90,
+                        90 - sweep
+                    );
+                }
             }
         }
         dc.setPenWidth(1);
     }
 
-    private function drawInlineMetric(
+    // [icon] VALUE UNIT — measured group; VALUE > UNIT > ICON hierarchy
+    private function drawSecondaryMetric(
         dc as Dc,
         theme as Theme,
         groupCx as Number,
         y as Number,
-        valueText as String,
-        unitText as String
+        metric as MetricRender
     ) as Void {
         var valueFont = Graphics.FONT_TINY;
         var unitFont = Graphics.FONT_XTINY;
-        var valueWidth = dc.getTextWidthInPixels(valueText, valueFont);
-        var unitWidth = dc.getTextWidthInPixels(unitText, unitFont);
-        var totalWidth = valueWidth + INLINE_GAP + unitWidth;
+        var valueWidth = dc.getTextWidthInPixels(metric.value, valueFont);
+        var unitWidth = dc.getTextWidthInPixels(metric.label, unitFont);
+        var iconW = 0;
+        if (metric.icon != null) {
+            iconW = SECONDARY_ICON_SIZE;
+        }
+
+        var totalWidth = valueWidth + INLINE_GAP_VALUE_UNIT + unitWidth;
+        if (iconW > 0) {
+            totalWidth = iconW + INLINE_GAP_ICON_VALUE + valueWidth
+                + INLINE_GAP_VALUE_UNIT + unitWidth;
+        }
         var left = groupCx - (totalWidth / 2);
 
         var valueHeight = dc.getFontHeight(valueFont);
         var unitHeight = dc.getFontHeight(unitFont);
-        var unitY = y + ((valueHeight - unitHeight) / 2);
+        var rowMid = y + (valueHeight / 2);
+
+        var cursor = left;
+        if (metric.icon != null) {
+            var iconY = rowMid - (SECONDARY_ICON_SIZE / 2);
+            drawMetricIcon(dc, metric, cursor, iconY, SECONDARY_ICON_SIZE);
+            cursor = cursor + iconW + INLINE_GAP_ICON_VALUE;
+        }
 
         dc.setColor(theme.primaryText, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            left,
+            cursor,
             y,
             valueFont,
-            valueText,
+            metric.value,
             Graphics.TEXT_JUSTIFY_LEFT
         );
+        cursor = cursor + valueWidth + INLINE_GAP_VALUE_UNIT;
 
+        var unitY = y + (valueHeight - unitHeight);
         dc.setColor(theme.secondaryText, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            left + valueWidth + INLINE_GAP,
+            cursor,
             unitY,
             unitFont,
-            unitText,
+            metric.label,
             Graphics.TEXT_JUSTIFY_LEFT
         );
+    }
+
+    private function drawMetricIcon(
+        dc as Dc,
+        metric as MetricRender,
+        x as Number,
+        y as Number,
+        slotSize as Number
+    ) as Void {
+        var bitmap = metric.icon;
+        if (bitmap == null) {
+            return;
+        }
+
+        var bw = bitmap.getWidth();
+        var bh = bitmap.getHeight();
+        var drawX = x + ((slotSize - bw) / 2);
+        var drawY = y + ((slotSize - bh) / 2);
+        dc.drawBitmap(drawX, drawY, bitmap);
     }
 
     private function selectSharedMetricFont(
@@ -361,34 +340,30 @@ class EliteFaceView extends WatchUi.WatchFace {
         text as String,
         maxWidth as Number
     ) as Number {
-        if (dc.getTextWidthInPixels(text, Graphics.FONT_NUMBER_MILD) <= maxWidth) {
-            return FONT_RANK_MILD;
-        }
         if (dc.getTextWidthInPixels(text, Graphics.FONT_MEDIUM) <= maxWidth) {
             return FONT_RANK_MEDIUM;
         }
         if (dc.getTextWidthInPixels(text, Graphics.FONT_SMALL) <= maxWidth) {
             return FONT_RANK_SMALL;
         }
-        return FONT_RANK_TINY;
+        if (dc.getTextWidthInPixels(text, Graphics.FONT_TINY) <= maxWidth) {
+            return FONT_RANK_TINY;
+        }
+        return FONT_RANK_XTINY;
     }
 
     private function fontFromRank(rank as Number) as FontDefinition {
-        if (rank == FONT_RANK_MILD) {
-            return Graphics.FONT_NUMBER_MILD;
-        }
         if (rank == FONT_RANK_MEDIUM) {
             return Graphics.FONT_MEDIUM;
         }
         if (rank == FONT_RANK_SMALL) {
             return Graphics.FONT_SMALL;
         }
-        return Graphics.FONT_TINY;
+        if (rank == FONT_RANK_TINY) {
+            return Graphics.FONT_TINY;
+        }
+        return Graphics.FONT_XTINY;
     }
-
-    // -------------------------------------------------------------------------
-    // Time formatting
-    // -------------------------------------------------------------------------
 
     private function formatTime(data as WatchData) as String {
         var hours = data.hour;

@@ -1,19 +1,24 @@
 import Toybox.Lang;
+import Toybox.WatchUi;
 
-// Central metric formatting + progress from WatchData.
-// Adding a metric: extend MetricIds, this catalog, and settings options.
+// Central metric formatting + progress + icon binding from WatchData.
+// Adding a metric: extend MetricIds, icons, this catalog, and settings.
 module MetricCatalog {
 
     const HR_GAUGE_MIN = 40;
     const HR_GAUGE_MAX = 190;
 
-    // Fill PRIMARY slot: value, short label, progress 0..1
+    // Fill PRIMARY slot: value, progress, metric-owned icon
     function fillPrimary(
         metricId as Number,
         data as WatchData,
-        out as MetricRender
+        out as MetricRender,
+        icons as MetricIconCache
     ) as Void {
         var id = MetricCompatibility.defaultPrimary(metricId);
+        out.metricId = id;
+        out.label = "";
+        out.icon = icons.iconFor(id);
 
         if (id == MetricIds.HEART_RATE) {
             if (data.heartRate == null) {
@@ -23,7 +28,6 @@ module MetricCatalog {
                 out.value = (data.heartRate as Number).format("%d");
                 out.progress = heartRateProgress(data.heartRate as Number);
             }
-            out.label = "HR";
             return;
         }
 
@@ -35,23 +39,25 @@ module MetricCatalog {
                 out.value = formatThousands(data.steps as Number);
                 out.progress = stepsProgress(data);
             }
-            out.label = "STEPS";
             return;
         }
 
-        // BATTERY (default primary fallback)
+        // BATTERY
         out.value = data.battery.format("%d") + "%";
-        out.label = "BAT";
         out.progress = batteryProgress(data.battery);
     }
 
-    // Fill SECONDARY slot: value + unit (stored in label)
+    // Fill SECONDARY slot: value + unit + metric-owned icon
     function fillSecondary(
         metricId as Number,
         data as WatchData,
-        out as MetricRender
+        out as MetricRender,
+        icons as MetricIconCache
     ) as Void {
         var id = MetricCompatibility.defaultSecondary(metricId);
+        out.metricId = id;
+        out.progress = 0.0;
+        out.icon = icons.iconFor(id);
 
         if (id == MetricIds.CALORIES) {
             if (data.calories == null) {
@@ -60,11 +66,10 @@ module MetricCatalog {
                 out.value = (data.calories as Number).format("%d");
             }
             out.label = "CAL";
-            out.progress = 0.0;
             return;
         }
 
-        // DISTANCE (default secondary fallback)
+        // DISTANCE
         if (data.distanceCm == null) {
             out.value = "--";
         } else {
@@ -72,7 +77,10 @@ module MetricCatalog {
             out.value = km.format("%.1f");
         }
         out.label = "KM";
-        out.progress = 0.0;
+    }
+
+    function usesAccentIcon(metricId as Number) as Boolean {
+        return metricId == MetricIds.HEART_RATE;
     }
 
     function heartRateProgress(hrValue as Number) as Float {
