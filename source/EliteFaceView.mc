@@ -4,7 +4,7 @@ import Toybox.Lang;
 import Toybox.System;
 import Toybox.WatchUi;
 
-// EliteFace v0.9.2 — Typography and Icon System
+// EliteFace v0.9.7 — Aggressive Icon Scale
 class EliteFaceView extends WatchUi.WatchFace {
 
     private const TIME_FORMAT_SYSTEM = 0;
@@ -24,21 +24,24 @@ class EliteFaceView extends WatchUi.WatchFace {
     private const COMP_CENTER_CX = 227;
     private const COMP_RIGHT_CX = 349;
     private const COMP_RADIUS = 47;
-    private const COMP_RING_PEN = 1;
+    private const COMP_TRACK_PEN = 3;
+    private const COMP_PROGRESS_PEN = 3;
     private const COMP_VALUE_MAX_WIDTH = 64;
-    private const COMP_ICON_SIZE = 14;
-    // Explicit vertical zones inside the circle (relative to cy)
-    private const COMP_VALUE_OFFSET_Y = -16;
-    private const COMP_ICON_OFFSET_Y = 10;
+    // Shared primary icon slot — must fit ~20–22px visible artwork + padding
+    private const PRIMARY_ICON_SLOT_SIZE = 24;
+    private const COMP_VALUE_OFFSET_Y = -15;
+    private const PRIMARY_ICON_Y_OFFSET = 12;
 
-    private const BAND_BOTTOM_Y = 362;
-    private const BOTTOM_LEFT_CX = 135;
-    private const BOTTOM_RIGHT_CX = 319;
-    private const INLINE_GAP_ICON_VALUE = 4;
-    private const INLINE_GAP_VALUE_UNIT = 3;
-    private const SECONDARY_ICON_SIZE = 12;
+    // Secondary stacked: VALUE above, ICON below (no unit text, no circle)
+    private const SECONDARY_LEFT_CX = 155;
+    private const SECONDARY_RIGHT_CX = 299;
+    private const SECONDARY_VALUE_Y = 345;
+    private const SECONDARY_ICON_Y_OFFSET = 392;
+    private const SECONDARY_VALUE_MAX_WIDTH = 68;
+    private const SECONDARY_ICON_SLOT_SIZE = 24;
+    private const SECONDARY_ICON_MAX_Y = 406;
 
-    // Primary font ladder — max is FONT_MEDIUM (one tier below v0.9.1 NUMBER_MILD)
+    // Shared font ladder — primary + secondary values (max FONT_MEDIUM)
     private const FONT_RANK_MEDIUM = 0;
     private const FONT_RANK_SMALL = 1;
     private const FONT_RANK_TINY = 2;
@@ -120,8 +123,41 @@ class EliteFaceView extends WatchUi.WatchFace {
         drawPrimaryComplication(dc, theme, COMP_CENTER_CX, COMP_CY, _primaryCenter, sharedFont);
         drawPrimaryComplication(dc, theme, COMP_RIGHT_CX, COMP_CY, _primaryRight, sharedFont);
 
-        drawSecondaryMetric(dc, theme, BOTTOM_LEFT_CX, BAND_BOTTOM_Y, _secondaryLeft);
-        drawSecondaryMetric(dc, theme, BOTTOM_RIGHT_CX, BAND_BOTTOM_Y, _secondaryRight);
+        // Secondary: VALUE + ICON only — same font tier as primary, fit by width
+        var secondaryFont = selectSharedSecondaryFont(
+            dc,
+            _secondaryLeft.value,
+            _secondaryRight.value,
+            SECONDARY_VALUE_MAX_WIDTH
+        );
+        var valueHeight = dc.getFontHeight(secondaryFont);
+        var iconY = SECONDARY_ICON_Y_OFFSET;
+        var minIconY = SECONDARY_VALUE_Y + valueHeight + 4;
+        if (iconY < minIconY) {
+            iconY = minIconY;
+        }
+        if (iconY > SECONDARY_ICON_MAX_Y) {
+            iconY = SECONDARY_ICON_MAX_Y;
+        }
+
+        drawSecondaryMetric(
+            dc,
+            theme,
+            SECONDARY_LEFT_CX,
+            SECONDARY_VALUE_Y,
+            iconY,
+            secondaryFont,
+            _secondaryLeft
+        );
+        drawSecondaryMetric(
+            dc,
+            theme,
+            SECONDARY_RIGHT_CX,
+            SECONDARY_VALUE_Y,
+            iconY,
+            secondaryFont,
+            _secondaryRight
+        );
     }
 
     function onHide() as Void {
@@ -169,7 +205,6 @@ class EliteFaceView extends WatchUi.WatchFace {
         dc.setPenWidth(1);
     }
 
-    // Explicit zones: value in upper half, icon in lower half
     private function drawPrimaryComplication(
         dc as Dc,
         theme as Theme,
@@ -182,7 +217,7 @@ class EliteFaceView extends WatchUi.WatchFace {
 
         var valueHeight = dc.getFontHeight(valueFont);
         var valueY = cy + COMP_VALUE_OFFSET_Y - (valueHeight / 2);
-        var iconY = cy + COMP_ICON_OFFSET_Y;
+        var iconY = cy + PRIMARY_ICON_Y_OFFSET;
 
         dc.setColor(theme.primaryText, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
@@ -196,9 +231,9 @@ class EliteFaceView extends WatchUi.WatchFace {
         drawMetricIcon(
             dc,
             metric,
-            cx - (COMP_ICON_SIZE / 2),
+            cx - (PRIMARY_ICON_SLOT_SIZE / 2),
             iconY,
-            COMP_ICON_SIZE
+            PRIMARY_ICON_SLOT_SIZE
         );
     }
 
@@ -210,7 +245,7 @@ class EliteFaceView extends WatchUi.WatchFace {
         radius as Number,
         progress as Float
     ) as Void {
-        dc.setPenWidth(COMP_RING_PEN);
+        dc.setPenWidth(COMP_TRACK_PEN);
         dc.setColor(theme.track, Graphics.COLOR_TRANSPARENT);
         dc.drawArc(cx, cy, radius, Graphics.ARC_CLOCKWISE, 0, 0);
 
@@ -219,6 +254,7 @@ class EliteFaceView extends WatchUi.WatchFace {
             if (clamped > 1.0) {
                 clamped = 1.0;
             }
+            dc.setPenWidth(COMP_PROGRESS_PEN);
             dc.setColor(theme.accent, Graphics.COLOR_TRANSPARENT);
             if (clamped >= 0.999) {
                 dc.drawArc(cx, cy, radius, Graphics.ARC_CLOCKWISE, 90, 90);
@@ -239,59 +275,31 @@ class EliteFaceView extends WatchUi.WatchFace {
         dc.setPenWidth(1);
     }
 
-    // [icon] VALUE UNIT — measured group; VALUE > UNIT > ICON hierarchy
+    // Stacked VALUE + ICON; no unit text; icon from MetricRender
     private function drawSecondaryMetric(
         dc as Dc,
         theme as Theme,
-        groupCx as Number,
-        y as Number,
+        cx as Number,
+        valueY as Number,
+        iconY as Number,
+        valueFont as FontDefinition,
         metric as MetricRender
     ) as Void {
-        var valueFont = Graphics.FONT_TINY;
-        var unitFont = Graphics.FONT_XTINY;
-        var valueWidth = dc.getTextWidthInPixels(metric.value, valueFont);
-        var unitWidth = dc.getTextWidthInPixels(metric.label, unitFont);
-        var iconW = 0;
-        if (metric.icon != null) {
-            iconW = SECONDARY_ICON_SIZE;
-        }
-
-        var totalWidth = valueWidth + INLINE_GAP_VALUE_UNIT + unitWidth;
-        if (iconW > 0) {
-            totalWidth = iconW + INLINE_GAP_ICON_VALUE + valueWidth
-                + INLINE_GAP_VALUE_UNIT + unitWidth;
-        }
-        var left = groupCx - (totalWidth / 2);
-
-        var valueHeight = dc.getFontHeight(valueFont);
-        var unitHeight = dc.getFontHeight(unitFont);
-        var rowMid = y + (valueHeight / 2);
-
-        var cursor = left;
-        if (metric.icon != null) {
-            var iconY = rowMid - (SECONDARY_ICON_SIZE / 2);
-            drawMetricIcon(dc, metric, cursor, iconY, SECONDARY_ICON_SIZE);
-            cursor = cursor + iconW + INLINE_GAP_ICON_VALUE;
-        }
-
         dc.setColor(theme.primaryText, Graphics.COLOR_TRANSPARENT);
         dc.drawText(
-            cursor,
-            y,
+            cx,
+            valueY,
             valueFont,
             metric.value,
-            Graphics.TEXT_JUSTIFY_LEFT
+            Graphics.TEXT_JUSTIFY_CENTER
         );
-        cursor = cursor + valueWidth + INLINE_GAP_VALUE_UNIT;
 
-        var unitY = y + (valueHeight - unitHeight);
-        dc.setColor(theme.secondaryText, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            cursor,
-            unitY,
-            unitFont,
-            metric.label,
-            Graphics.TEXT_JUSTIFY_LEFT
+        drawMetricIcon(
+            dc,
+            metric,
+            cx - (SECONDARY_ICON_SLOT_SIZE / 2),
+            iconY,
+            SECONDARY_ICON_SLOT_SIZE
         );
     }
 
@@ -331,6 +339,21 @@ class EliteFaceView extends WatchUi.WatchFace {
         }
         if (rankC > sharedRank) {
             sharedRank = rankC;
+        }
+        return fontFromRank(sharedRank);
+    }
+
+    private function selectSharedSecondaryFont(
+        dc as Dc,
+        textA as String,
+        textB as String,
+        maxWidth as Number
+    ) as FontDefinition {
+        var rankA = metricFontRank(dc, textA, maxWidth);
+        var rankB = metricFontRank(dc, textB, maxWidth);
+        var sharedRank = rankA;
+        if (rankB > sharedRank) {
+            sharedRank = rankB;
         }
         return fontFromRank(sharedRank);
     }
