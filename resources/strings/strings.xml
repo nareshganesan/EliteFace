@@ -2,15 +2,24 @@
 
     <string id="AppName">EliteFace</string>
 
-    <string id="BackgroundColorTitle">Background Color</string>
-    <string id="ForegroundColorTitle">Foreground Color</string>
-    <string id="MilitaryFormatTitle">Military Format for 24 Hour Time</string>
+    <string id="ThemeTitle">Theme</string>
+    <string id="ThemeCarbonRed">Carbon Red</string>
 
-    <string id="ColorBlack">Black</string>
-    <string id="ColorDarkGray">Dark Gray</string>
-    <string id="ColorLightGray">Light Gray</string>
-    <string id="ColorWhite">White</string>
-    <string id="ColorBlue">Blue</string>
-    <string id="ColorRed">Red</string>
+    <string id="TimeFormatTitle">Time Format</string>
+    <string id="TimeFormatSystem">System</string>
+    <string id="TimeFormat12Hour">12 Hour</string>
+    <string id="TimeFormat24Hour">24 Hour</string>
+
+    <string id="PrimaryLeftMetricTitle">Primary Left</string>
+    <string id="PrimaryCenterMetricTitle">Primary Center</string>
+    <string id="PrimaryRightMetricTitle">Primary Right</string>
+    <string id="SecondaryLeftMetricTitle">Secondary Left</string>
+    <string id="SecondaryRightMetricTitle">Secondary Right</string>
+
+    <string id="MetricHeartRate">Heart Rate</string>
+    <string id="MetricSteps">Steps</string>
+    <string id="MetricBattery">Battery</string>
+    <string id="MetricDistance">Distance</string>
+    <string id="MetricCalories">Calories</string>
 
 </strings>

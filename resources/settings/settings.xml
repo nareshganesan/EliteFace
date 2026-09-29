@@ -1,25 +1,55 @@
 <settings xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://developer.garmin.com/downloads/connect-iq/resources.xsd">
 
-    <setting propertyKey="@Properties.BackgroundColor" title="@Strings.BackgroundColorTitle">
+    <setting propertyKey="@Properties.Theme" title="@Strings.ThemeTitle">
         <settingConfig type="list">
-            <listEntry value="0x000000">@Strings.ColorBlack</listEntry>
-            <listEntry value="0x555555">@Strings.ColorDarkGray</listEntry>
-            <listEntry value="0xAAAAAA">@Strings.ColorLightGray</listEntry>
-            <listEntry value="0xFFFFFF">@Strings.ColorWhite</listEntry>
+            <listEntry value="0">@Strings.ThemeCarbonRed</listEntry>
         </settingConfig>
     </setting>
 
-    <setting propertyKey="@Properties.ForegroundColor" title="@Strings.ForegroundColorTitle">
+    <setting propertyKey="@Properties.TimeFormat" title="@Strings.TimeFormatTitle">
         <settingConfig type="list">
-            <listEntry value="0x000000">@Strings.ColorBlack</listEntry>
-            <listEntry value="0x0000FF">@Strings.ColorBlue</listEntry>
-            <listEntry value="0xFF0000">@Strings.ColorRed</listEntry>
-            <listEntry value="0xFFFFFF">@Strings.ColorWhite</listEntry>
+            <listEntry value="0">@Strings.TimeFormatSystem</listEntry>
+            <listEntry value="1">@Strings.TimeFormat12Hour</listEntry>
+            <listEntry value="2">@Strings.TimeFormat24Hour</listEntry>
         </settingConfig>
     </setting>
 
-    <setting propertyKey="@Properties.UseMilitaryFormat" title="@Strings.MilitaryFormatTitle">
-        <settingConfig type="boolean" />
+    <setting propertyKey="@Properties.PrimaryLeftMetric" title="@Strings.PrimaryLeftMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.MetricHeartRate</listEntry>
+            <listEntry value="1">@Strings.MetricSteps</listEntry>
+            <listEntry value="2">@Strings.MetricBattery</listEntry>
+        </settingConfig>
+    </setting>
+
+    <setting propertyKey="@Properties.PrimaryCenterMetric" title="@Strings.PrimaryCenterMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.MetricHeartRate</listEntry>
+            <listEntry value="1">@Strings.MetricSteps</listEntry>
+            <listEntry value="2">@Strings.MetricBattery</listEntry>
+        </settingConfig>
+    </setting>
+
+    <setting propertyKey="@Properties.PrimaryRightMetric" title="@Strings.PrimaryRightMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.MetricHeartRate</listEntry>
+            <listEntry value="1">@Strings.MetricSteps</listEntry>
+            <listEntry value="2">@Strings.MetricBattery</listEntry>
+        </settingConfig>
+    </setting>
+
+    <setting propertyKey="@Properties.SecondaryLeftMetric" title="@Strings.SecondaryLeftMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="3">@Strings.MetricDistance</listEntry>
+            <listEntry value="4">@Strings.MetricCalories</listEntry>
+        </settingConfig>
+    </setting>
+
+    <setting propertyKey="@Properties.SecondaryRightMetric" title="@Strings.SecondaryRightMetricTitle">
+        <settingConfig type="list">
+            <listEntry value="3">@Strings.MetricDistance</listEntry>
+            <listEntry value="4">@Strings.MetricCalories</listEntry>
+        </settingConfig>
     </setting>
 
 </settings>

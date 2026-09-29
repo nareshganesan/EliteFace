@@ -1,204 +1,417 @@
-import Toybox.Activity;
-import Toybox.ActivityMonitor;
 import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.System;
-import Toybox.Time;
-import Toybox.Time.Gregorian;
 import Toybox.WatchUi;
 
+// EliteFace v0.9.7 — Aggressive Icon Scale
 class EliteFaceView extends WatchUi.WatchFace {
+
+    private const TIME_FORMAT_SYSTEM = 0;
+    private const TIME_FORMAT_12H = 1;
+    private const TIME_FORMAT_24H = 2;
+
+    // -------------------------------------------------------------------------
+    // Layout — 454x454 FR965
+    // -------------------------------------------------------------------------
+    private const BAND_DATE_Y = 40;
+    private const ACCENT_GAP = 3;
+    private const ACCENT_HALF = 12;
+    private const BAND_TIME_Y = 92;
+
+    private const COMP_CY = 280;
+    private const COMP_LEFT_CX = 105;
+    private const COMP_CENTER_CX = 227;
+    private const COMP_RIGHT_CX = 349;
+    private const COMP_RADIUS = 47;
+    private const COMP_TRACK_PEN = 3;
+    private const COMP_PROGRESS_PEN = 3;
+    private const COMP_VALUE_MAX_WIDTH = 64;
+    // Shared primary icon slot — must fit ~20–22px visible artwork + padding
+    private const PRIMARY_ICON_SLOT_SIZE = 24;
+    private const COMP_VALUE_OFFSET_Y = -15;
+    private const PRIMARY_ICON_Y_OFFSET = 12;
+
+    // Secondary stacked: VALUE above, ICON below (no unit text, no circle)
+    private const SECONDARY_LEFT_CX = 155;
+    private const SECONDARY_RIGHT_CX = 299;
+    private const SECONDARY_VALUE_Y = 345;
+    private const SECONDARY_ICON_Y_OFFSET = 392;
+    private const SECONDARY_VALUE_MAX_WIDTH = 68;
+    private const SECONDARY_ICON_SLOT_SIZE = 24;
+    private const SECONDARY_ICON_MAX_Y = 406;
+
+    // Shared font ladder — primary + secondary values (max FONT_MEDIUM)
+    private const FONT_RANK_MEDIUM = 0;
+    private const FONT_RANK_SMALL = 1;
+    private const FONT_RANK_TINY = 2;
+    private const FONT_RANK_XTINY = 3;
+
+    private var _dataProvider as WatchDataProvider;
+    private var _icons as MetricIconCache;
+    private var _primaryLeft as MetricRender;
+    private var _primaryCenter as MetricRender;
+    private var _primaryRight as MetricRender;
+    private var _secondaryLeft as MetricRender;
+    private var _secondaryRight as MetricRender;
 
     function initialize() {
         WatchFace.initialize();
+        _dataProvider = new WatchDataProvider();
+        _icons = new MetricIconCache();
+        _primaryLeft = new MetricRender();
+        _primaryCenter = new MetricRender();
+        _primaryRight = new MetricRender();
+        _secondaryLeft = new MetricRender();
+        _secondaryRight = new MetricRender();
     }
 
-    // Load your resources here
     function onLayout(dc as Dc) as Void {
-        // Direct Dc rendering — no XML layout.
+        _icons.load();
     }
 
-    // Called when this View is brought to the foreground. Restore
-    // the state of this View and prepare it to be shown. This includes
-    // loading resources into memory.
     function onShow() as Void {
+        if (_icons.iconFor(MetricIds.HEART_RATE) == null) {
+            _icons.load();
+        }
     }
 
-    // Update the view
     function onUpdate(dc as Dc) as Void {
-        var width = dc.getWidth();
-        var height = dc.getHeight();
-        var centerX = width / 2;
+        var centerX = dc.getWidth() / 2;
+        var theme = ThemeCatalog.resolve(readThemeId());
+        var data = _dataProvider.getSnapshot();
 
-        // Black background
-        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
+        MetricCatalog.fillPrimary(readSlot("PrimaryLeftMetric"), data, _primaryLeft, _icons);
+        MetricCatalog.fillPrimary(readSlot("PrimaryCenterMetric"), data, _primaryCenter, _icons);
+        MetricCatalog.fillPrimary(readSlot("PrimaryRightMetric"), data, _primaryRight, _icons);
+        MetricCatalog.fillSecondary(readSlot("SecondaryLeftMetric"), data, _secondaryLeft, _icons);
+        MetricCatalog.fillSecondary(readSlot("SecondaryRightMetric"), data, _secondaryRight, _icons);
+
+        dc.setColor(theme.background, theme.background);
         dc.clear();
 
-        // --- Time (upper-middle, large, centered) ---
-        var timeString = formatTime();
-        var timeY = (height * 28) / 100;
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
+        var dateFont = Graphics.FONT_TINY;
+        drawCenteredText(
+            dc,
             centerX,
-            timeY,
+            BAND_DATE_Y,
+            dateFont,
+            data.dateText,
+            theme.primaryText
+        );
+        var accentY = BAND_DATE_Y + dc.getFontHeight(dateFont) + ACCENT_GAP;
+        drawDateAccent(dc, centerX, accentY, theme);
+
+        drawCenteredText(
+            dc,
+            centerX,
+            BAND_TIME_Y,
             Graphics.FONT_NUMBER_HOT,
-            timeString,
-            Graphics.TEXT_JUSTIFY_CENTER
+            formatTime(data),
+            theme.primaryText
         );
 
-        // --- Date (FRI 26), centered below time ---
-        var dateString = formatDate();
-        var dateY = timeY + Graphics.getFontHeight(Graphics.FONT_NUMBER_HOT) + 4;
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            centerX,
-            dateY,
-            Graphics.FONT_MEDIUM,
-            dateString,
-            Graphics.TEXT_JUSTIFY_CENTER
+        var sharedFont = selectSharedMetricFont(
+            dc,
+            _primaryLeft.value,
+            _primaryCenter.value,
+            _primaryRight.value,
+            COMP_VALUE_MAX_WIDTH
         );
 
-        // --- Lower metrics row ---
-        var metricsY = (height * 68) / 100;
-        var sideMargin = (width * 18) / 100;
+        drawPrimaryComplication(dc, theme, COMP_LEFT_CX, COMP_CY, _primaryLeft, sharedFont);
+        drawPrimaryComplication(dc, theme, COMP_CENTER_CX, COMP_CY, _primaryCenter, sharedFont);
+        drawPrimaryComplication(dc, theme, COMP_RIGHT_CX, COMP_CY, _primaryRight, sharedFont);
 
-        // Heart rate — lower-left
-        var hrString = formatHeartRate();
-        dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            sideMargin,
-            metricsY,
-            Graphics.FONT_TINY,
-            "HR",
-            Graphics.TEXT_JUSTIFY_LEFT
+        // Secondary: VALUE + ICON only — same font tier as primary, fit by width
+        var secondaryFont = selectSharedSecondaryFont(
+            dc,
+            _secondaryLeft.value,
+            _secondaryRight.value,
+            SECONDARY_VALUE_MAX_WIDTH
         );
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            sideMargin,
-            metricsY + Graphics.getFontHeight(Graphics.FONT_TINY),
-            Graphics.FONT_SMALL,
-            hrString,
-            Graphics.TEXT_JUSTIFY_LEFT
-        );
+        var valueHeight = dc.getFontHeight(secondaryFont);
+        var iconY = SECONDARY_ICON_Y_OFFSET;
+        var minIconY = SECONDARY_VALUE_Y + valueHeight + 4;
+        if (iconY < minIconY) {
+            iconY = minIconY;
+        }
+        if (iconY > SECONDARY_ICON_MAX_Y) {
+            iconY = SECONDARY_ICON_MAX_Y;
+        }
 
-        // Battery — lower-right ("84% BAT")
-        var batteryString = formatBattery();
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            width - sideMargin,
-            metricsY + Graphics.getFontHeight(Graphics.FONT_TINY),
-            Graphics.FONT_SMALL,
-            batteryString,
-            Graphics.TEXT_JUSTIFY_RIGHT
+        drawSecondaryMetric(
+            dc,
+            theme,
+            SECONDARY_LEFT_CX,
+            SECONDARY_VALUE_Y,
+            iconY,
+            secondaryFont,
+            _secondaryLeft
         );
-
-        // Steps — centered below HR / Battery
-        var stepsY = metricsY + Graphics.getFontHeight(Graphics.FONT_TINY)
-            + Graphics.getFontHeight(Graphics.FONT_SMALL) + 10;
-        var stepsString = formatSteps();
-        dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            centerX,
-            stepsY,
-            Graphics.FONT_TINY,
-            "STEPS",
-            Graphics.TEXT_JUSTIFY_CENTER
-        );
-        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
-        dc.drawText(
-            centerX,
-            stepsY + Graphics.getFontHeight(Graphics.FONT_TINY),
-            Graphics.FONT_SMALL,
-            stepsString,
-            Graphics.TEXT_JUSTIFY_CENTER
+        drawSecondaryMetric(
+            dc,
+            theme,
+            SECONDARY_RIGHT_CX,
+            SECONDARY_VALUE_Y,
+            iconY,
+            secondaryFont,
+            _secondaryRight
         );
     }
 
-    // Called when this View is removed from the screen. Save the
-    // state of this View here. This includes freeing resources from
-    // memory.
     function onHide() as Void {
     }
 
-    // The user has just looked at their watch. Timers and animations may be started here.
     function onExitSleep() as Void {
     }
 
-    // Terminate any active timers and prepare for slow updates.
     function onEnterSleep() as Void {
     }
 
-    // Format clock time, respecting device 12/24h and UseMilitaryFormat.
-    private function formatTime() as String {
-        var timeFormat = "$1$:$2$";
-        var clockTime = System.getClockTime();
-        var hours = clockTime.hour;
+    private function readThemeId() as Number {
+        return Application.Properties.getValue("Theme") as Number;
+    }
 
-        if (!System.getDeviceSettings().is24Hour) {
-            // 12-hour clock: 0 -> 12, 13-23 -> 1-11, 12 stays 12
+    private function readTimeFormat() as Number {
+        return Application.Properties.getValue("TimeFormat") as Number;
+    }
+
+    private function readSlot(propertyId as String) as Number {
+        return Application.Properties.getValue(propertyId) as Number;
+    }
+
+    private function drawCenteredText(
+        dc as Dc,
+        x as Number,
+        y as Number,
+        font as FontDefinition,
+        text as String,
+        color as Number
+    ) as Void {
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(x, y, font, text, Graphics.TEXT_JUSTIFY_CENTER);
+    }
+
+    private function drawDateAccent(
+        dc as Dc,
+        centerX as Number,
+        y as Number,
+        theme as Theme
+    ) as Void {
+        dc.setPenWidth(2);
+        dc.setColor(theme.accent, Graphics.COLOR_TRANSPARENT);
+        dc.drawLine(centerX - ACCENT_HALF, y, centerX + ACCENT_HALF, y);
+        dc.setPenWidth(1);
+    }
+
+    private function drawPrimaryComplication(
+        dc as Dc,
+        theme as Theme,
+        cx as Number,
+        cy as Number,
+        metric as MetricRender,
+        valueFont as FontDefinition
+    ) as Void {
+        drawProgressRing(dc, theme, cx, cy, COMP_RADIUS, metric.progress);
+
+        var valueHeight = dc.getFontHeight(valueFont);
+        var valueY = cy + COMP_VALUE_OFFSET_Y - (valueHeight / 2);
+        var iconY = cy + PRIMARY_ICON_Y_OFFSET;
+
+        dc.setColor(theme.primaryText, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            cx,
+            valueY,
+            valueFont,
+            metric.value,
+            Graphics.TEXT_JUSTIFY_CENTER
+        );
+
+        drawMetricIcon(
+            dc,
+            metric,
+            cx - (PRIMARY_ICON_SLOT_SIZE / 2),
+            iconY,
+            PRIMARY_ICON_SLOT_SIZE
+        );
+    }
+
+    private function drawProgressRing(
+        dc as Dc,
+        theme as Theme,
+        cx as Number,
+        cy as Number,
+        radius as Number,
+        progress as Float
+    ) as Void {
+        dc.setPenWidth(COMP_TRACK_PEN);
+        dc.setColor(theme.track, Graphics.COLOR_TRANSPARENT);
+        dc.drawArc(cx, cy, radius, Graphics.ARC_CLOCKWISE, 0, 0);
+
+        if (progress > 0.0) {
+            var clamped = progress;
+            if (clamped > 1.0) {
+                clamped = 1.0;
+            }
+            dc.setPenWidth(COMP_PROGRESS_PEN);
+            dc.setColor(theme.accent, Graphics.COLOR_TRANSPARENT);
+            if (clamped >= 0.999) {
+                dc.drawArc(cx, cy, radius, Graphics.ARC_CLOCKWISE, 90, 90);
+            } else {
+                var sweep = (360.0 * clamped).toNumber();
+                if (sweep > 0) {
+                    dc.drawArc(
+                        cx,
+                        cy,
+                        radius,
+                        Graphics.ARC_CLOCKWISE,
+                        90,
+                        90 - sweep
+                    );
+                }
+            }
+        }
+        dc.setPenWidth(1);
+    }
+
+    // Stacked VALUE + ICON; no unit text; icon from MetricRender
+    private function drawSecondaryMetric(
+        dc as Dc,
+        theme as Theme,
+        cx as Number,
+        valueY as Number,
+        iconY as Number,
+        valueFont as FontDefinition,
+        metric as MetricRender
+    ) as Void {
+        dc.setColor(theme.primaryText, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(
+            cx,
+            valueY,
+            valueFont,
+            metric.value,
+            Graphics.TEXT_JUSTIFY_CENTER
+        );
+
+        drawMetricIcon(
+            dc,
+            metric,
+            cx - (SECONDARY_ICON_SLOT_SIZE / 2),
+            iconY,
+            SECONDARY_ICON_SLOT_SIZE
+        );
+    }
+
+    private function drawMetricIcon(
+        dc as Dc,
+        metric as MetricRender,
+        x as Number,
+        y as Number,
+        slotSize as Number
+    ) as Void {
+        var bitmap = metric.icon;
+        if (bitmap == null) {
+            return;
+        }
+
+        var bw = bitmap.getWidth();
+        var bh = bitmap.getHeight();
+        var drawX = x + ((slotSize - bw) / 2);
+        var drawY = y + ((slotSize - bh) / 2);
+        dc.drawBitmap(drawX, drawY, bitmap);
+    }
+
+    private function selectSharedMetricFont(
+        dc as Dc,
+        textA as String,
+        textB as String,
+        textC as String,
+        maxWidth as Number
+    ) as FontDefinition {
+        var rankA = metricFontRank(dc, textA, maxWidth);
+        var rankB = metricFontRank(dc, textB, maxWidth);
+        var rankC = metricFontRank(dc, textC, maxWidth);
+
+        var sharedRank = rankA;
+        if (rankB > sharedRank) {
+            sharedRank = rankB;
+        }
+        if (rankC > sharedRank) {
+            sharedRank = rankC;
+        }
+        return fontFromRank(sharedRank);
+    }
+
+    private function selectSharedSecondaryFont(
+        dc as Dc,
+        textA as String,
+        textB as String,
+        maxWidth as Number
+    ) as FontDefinition {
+        var rankA = metricFontRank(dc, textA, maxWidth);
+        var rankB = metricFontRank(dc, textB, maxWidth);
+        var sharedRank = rankA;
+        if (rankB > sharedRank) {
+            sharedRank = rankB;
+        }
+        return fontFromRank(sharedRank);
+    }
+
+    private function metricFontRank(
+        dc as Dc,
+        text as String,
+        maxWidth as Number
+    ) as Number {
+        if (dc.getTextWidthInPixels(text, Graphics.FONT_MEDIUM) <= maxWidth) {
+            return FONT_RANK_MEDIUM;
+        }
+        if (dc.getTextWidthInPixels(text, Graphics.FONT_SMALL) <= maxWidth) {
+            return FONT_RANK_SMALL;
+        }
+        if (dc.getTextWidthInPixels(text, Graphics.FONT_TINY) <= maxWidth) {
+            return FONT_RANK_TINY;
+        }
+        return FONT_RANK_XTINY;
+    }
+
+    private function fontFromRank(rank as Number) as FontDefinition {
+        if (rank == FONT_RANK_MEDIUM) {
+            return Graphics.FONT_MEDIUM;
+        }
+        if (rank == FONT_RANK_SMALL) {
+            return Graphics.FONT_SMALL;
+        }
+        if (rank == FONT_RANK_TINY) {
+            return Graphics.FONT_TINY;
+        }
+        return Graphics.FONT_XTINY;
+    }
+
+    private function formatTime(data as WatchData) as String {
+        var hours = data.hour;
+        var use24Hour = false;
+        var mode = readTimeFormat();
+
+        if (mode == TIME_FORMAT_SYSTEM) {
+            use24Hour = System.getDeviceSettings().is24Hour;
+        } else if (mode == TIME_FORMAT_12H) {
+            use24Hour = false;
+        } else if (mode == TIME_FORMAT_24H) {
+            use24Hour = true;
+        } else {
+            use24Hour = System.getDeviceSettings().is24Hour;
+        }
+
+        if (!use24Hour) {
             if (hours == 0) {
                 hours = 12;
             } else if (hours > 12) {
                 hours = hours - 12;
             }
-        } else {
-            if (Application.Properties.getValue("UseMilitaryFormat")) {
-                timeFormat = "$1$$2$";
-                hours = hours.format("%02d");
-            }
         }
 
-        return Lang.format(timeFormat, [hours, clockTime.min.format("%02d")]);
-    }
-
-    // Format date as "FRI 26"
-    private function formatDate() as String {
-        var info = Gregorian.info(Time.now(), Time.FORMAT_MEDIUM);
-        var dayOfWeek = (info.day_of_week as String).toUpper();
-        return Lang.format("$1$ $2$", [dayOfWeek, info.day]);
-    }
-
-    // Current HR from Activity.Info, else most recent ActivityMonitor sample.
-    private function formatHeartRate() as String {
-        var hrValue = null as Number?;
-
-        var activityInfo = Activity.getActivityInfo();
-        if (activityInfo != null) {
-            hrValue = activityInfo.currentHeartRate;
-        }
-
-        if (hrValue == null) {
-            var hrIterator = ActivityMonitor.getHeartRateHistory(1, true);
-            if (hrIterator != null) {
-                var sample = hrIterator.next();
-                if ((sample != null)
-                    && (sample.heartRate != ActivityMonitor.INVALID_HR_SAMPLE)) {
-                    hrValue = sample.heartRate;
-                }
-            }
-        }
-
-        if (hrValue == null) {
-            return "--";
-        }
-        return hrValue.format("%d");
-    }
-
-    // Battery as "84% BAT"
-    private function formatBattery() as String {
-        var battery = System.getSystemStats().battery;
-        var pct = (battery + 0.5).toNumber();
-        return pct.format("%d") + "% BAT";
-    }
-
-    // Today's step count, or "--" if unavailable
-    private function formatSteps() as String {
-        var info = ActivityMonitor.getInfo();
-        if ((info == null) || (info.steps == null)) {
-            return "--";
-        }
-        return (info.steps as Number).format("%d");
+        return Lang.format("$1$:$2$", [hours, data.minute.format("%02d")]);
     }
 
 }

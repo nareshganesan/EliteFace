@@ -1,7 +1,13 @@
 <properties xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://developer.garmin.com/downloads/connect-iq/resources.xsd">
 
-    <property id="BackgroundColor" type="number">0x000000</property>
-    <property id="ForegroundColor" type="number">0xFF0000</property>
-    <property id="UseMilitaryFormat" type="boolean">false</property>
+    <property id="Theme" type="number">0</property>
+    <property id="TimeFormat" type="number">0</property>
+
+    <!-- MetricIds: HEART_RATE=0 STEPS=1 BATTERY=2 DISTANCE=3 CALORIES=4 -->
+    <property id="PrimaryLeftMetric" type="number">0</property>
+    <property id="PrimaryCenterMetric" type="number">1</property>
+    <property id="PrimaryRightMetric" type="number">2</property>
+    <property id="SecondaryLeftMetric" type="number">3</property>
+    <property id="SecondaryRightMetric" type="number">4</property>
 
 </properties>
